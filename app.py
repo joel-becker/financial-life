@@ -1,3 +1,14 @@
+from utils.plot import plot_model_output
+from models.personal_finance import PersonalFinanceModel
+from models.income_paths import (
+    ARIncomePath,
+    ConstantRealIncomePath,
+    ExponentialGrowthIncomePath,
+    LinearGrowthIncomePath,
+)
+from models.analysis import get_risk_aversion, marginal_change_analysis
+from config.parameters import input_params
+import utilities as utils
 import sys
 
 import numpy as np
@@ -6,17 +17,6 @@ import squigglepy as sq
 import streamlit as st
 
 sys.path.append("src")
-import utilities as utils
-from config.parameters import input_params
-from models.analysis import get_risk_aversion, marginal_change_analysis
-from models.income_paths import (
-    ARIncomePath,
-    ConstantRealIncomePath,
-    ExponentialGrowthIncomePath,
-    LinearGrowthIncomePath,
-)
-from models.personal_finance import PersonalFinanceModel
-from utils.plot import plot_model_output
 
 # Configurations
 st.set_page_config(
@@ -63,7 +63,8 @@ st.markdown("#### Background Information")
 col1, col2 = st.columns(2)
 
 with col1:
-    current_age = st.slider("Current age", 18, 100, 30, help="Your current age.")
+    current_age = st.slider("Current age", 18, 100, 30,
+                            help="Your current age.")
 
 with col2:
     age_at_death = st.slider(
@@ -112,8 +113,8 @@ st.markdown("#### Income and Spending")
 with st.expander("Income Options"):
     col1, col2 = st.columns(2)
     with col1:
-        base_income = st.slider(
-            "Base income", 0, 200_000, 50_000, help="Your starting annual income."
+        base_income = st.number_input(
+            "Base income", min_value=0, value=50_000, step=1000, help="Your starting annual income."
         )
     with col2:
         min_income = st.slider(
@@ -149,7 +150,8 @@ with st.expander("Advanced Income Path Options"):
             help="Standard deviation of income shocks.",
         )
         income_path = ARIncomePath(
-            sq.to(base_income * 0.9, base_income * 1.1), ar_coefficients, income_sd
+            sq.to(base_income * 0.9, base_income *
+                  1.1), ar_coefficients, income_sd
         )
     elif income_path_type == "Linear Growth":
         col1, col2 = st.columns(2)
@@ -169,7 +171,8 @@ with st.expander("Advanced Income Path Options"):
                 5000,
                 help="Standard deviation of income shocks.",
             )
-        income_path = LinearGrowthIncomePath(base_income, annual_growth_rate, income_sd)
+        income_path = LinearGrowthIncomePath(
+            base_income, annual_growth_rate, income_sd)
     else:  # Exponential Growth
         col1, col2 = st.columns(2)
         with col1:
@@ -257,20 +260,20 @@ st.markdown("#### Investment and Savings")
 with st.expander("Initial Assets"):
     col1, col2 = st.columns(2)
     with col1:
-        cash_start = st.slider(
+        cash_start = st.number_input(
             "Initial cash savings",
-            0,
-            1_000_000,
-            10_000,
+            min_value=0,
+            value=10_000,
+            step=1000,
             help="Amount of cash savings you start with.",
         )
 
     with col2:
-        market_start = st.slider(
+        market_start = st.number_input(
             "Initial market wealth",
-            0,
-            1_000_000,
-            50_000,
+            min_value=0,
+            value=50_000,
+            step=5000,
             help="Amount of market investments you start with.",
         )
 
@@ -308,7 +311,8 @@ with st.expander("Portfolio Construction"):
                 help="Proportion of your portfolio allocated to real estate.",
             )
 
-        portfolio_weights = np.array([stock_weight, bond_weight, real_estate_weight])
+        portfolio_weights = np.array(
+            [stock_weight, bond_weight, real_estate_weight])
         asset_returns = np.array([0.07, 0.03, 0.05])
         asset_volatilities = np.array([0.15, 0.05, 0.10])
         asset_correlations = np.array(
@@ -472,7 +476,8 @@ with st.expander("AGI Impact Parameters"):
 
     if enable_agi:
         st.markdown("##### AGI Timing")
-        st.markdown("Enter your cumulative probabilities for AGI arrival by each year:")
+        st.markdown(
+            "Enter your cumulative probabilities for AGI arrival by each year:")
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -697,7 +702,8 @@ if st.button("Generate Financial Advice"):
 
             # Display the table without index
             df = pd.DataFrame(
-                table_data, columns=["Suggested Change", "Impact on Lifetime Utility"]
+                table_data, columns=["Suggested Change",
+                                     "Impact on Lifetime Utility"]
             )
             st.dataframe(
                 df.style.applymap(
@@ -709,4 +715,5 @@ if st.button("Generate Financial Advice"):
                 hide_index=True,
             )
         else:
-            st.write("Your current financial plan looks optimal based on our analysis.")
+            st.write(
+                "Your current financial plan looks optimal based on our analysis.")
