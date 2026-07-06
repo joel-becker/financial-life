@@ -1,12 +1,8 @@
-import sys
-
 import numpy as np
 import pandas as pd
 import squigglepy as sq
 import streamlit as st
 
-sys.path.append("src")
-import utilities as utils
 from config.parameters import input_params
 from models.analysis import get_risk_aversion, marginal_change_analysis
 from models.income_paths import (
