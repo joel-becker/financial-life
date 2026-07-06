@@ -218,6 +218,10 @@ class PersonalFinanceModel:
             t, total_real_income
         )
 
+        # Mark-to-market capital gains for this year, computed before the
+        # tax calculation so they are taxed in the year they occur
+        self.capital_gains[:, t] = self.market[:, t] * real_market_returns[:, t]
+
         # Calculate real after-tax income
         real_after_tax_income = self.calculate_after_tax_income(t, total_real_income)
         self.real_after_tax_income[:, t] = real_after_tax_income
@@ -503,10 +507,8 @@ class PersonalFinanceModel:
         else:
             self.retirement_account[:, t] -= self.retirement_withdrawals[:, t]
 
-        # Calculate capital gains
-        self.capital_gains[:, t] = self.market[:, t] * real_market_returns[:, t]
-
-        # Update market value
+        # Update market value (capital gains were already recorded in
+        # simulate_year, before the tax calculation)
         self.market[:, t] *= 1 + real_market_returns[:, t]
 
         # Determine cash savings (up to max_cash_threshold)
@@ -588,20 +590,28 @@ class PersonalFinanceModel:
         real_contributions = self.retirement_contributions[:, t]
         real_withdrawals = self.retirement_withdrawals[:, t]
 
-        # Calculate taxable income in real terms
+        # Pre-tax contributions reduce taxable income; withdrawals from
+        # pre-tax retirement accounts are taxed as income. Donations are
+        # NOT subtracted here — TaxSystem applies the deduction (with the
+        # AGI cap) itself.
         real_taxable_income = (
-            total_real_income - real_contributions - real_donations + real_withdrawals
+            total_real_income - real_contributions + real_withdrawals
         )
         self.real_taxable_income[:, t] = real_taxable_income
 
-        # Calculate tax using real numbers
         self.tax_paid[:, t] = self.tax_system.calculate_tax(
             real_taxable_income, real_capital_gains, real_donations
         )
 
-        # Calculate and return real after-tax income
-        real_after_tax_income = total_real_income - self.tax_paid[:, t]
-        return real_after_tax_income
+        # Spendable income: withdrawn dollars are available to spend;
+        # taxed, contributed, and donated dollars are not.
+        return (
+            total_real_income
+            + real_withdrawals
+            - self.tax_paid[:, t]
+            - real_contributions
+            - real_donations
+        )
 
     def adjust_cash_and_market(self, t):
         total_liquid = self.cash[:, t] + self.market[:, t]
@@ -636,23 +646,6 @@ class PersonalFinanceModel:
     def calculate_charitable_donations(self, t, total_real_income):
         donations = total_real_income * self.charitable_giving_rate
         return np.minimum(donations, self.charitable_giving_cap)
-
-    def calculate_after_tax_income(self, t, total_real_income):
-        capital_gains = self.capital_gains[:, t]
-        donations = self.charitable_donations[:, t]
-
-        # Calculate retirement contributions
-        contribution = self.calculate_retirement_contribution(
-            t, total_real_income, self.current_age + t
-        )
-
-        # Subtract retirement contributions and charitable donations from taxable income
-        taxable_income = total_real_income - contribution - donations
-
-        self.tax_paid[:, t] = self.tax_system.calculate_tax(
-            taxable_income, capital_gains, donations
-        )
-        return total_real_income - self.tax_paid[:, t] - contribution
 
     def get_results(self):
         return {
