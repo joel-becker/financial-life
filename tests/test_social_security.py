@@ -46,3 +46,33 @@ def test_before_claim_age_is_zero():
     model = make_retired_model(35, 80000.0)
     benefit = model.calculate_us_social_security(20, np.array([50]))
     assert benefit[0] == 0.0
+
+
+def test_exact_pia_all_three_bands():
+    # AIME 6666.67 (35y at 80k): 0.9*1115 + 0.32*(6666.67-1115) = 2780.03/mo
+    model = make_retired_model(35, 80000.0)
+    benefit = model.calculate_us_social_security(37, np.array([67]))
+    aime = 80000.0 * 35 / (35 * 12)
+    expected_monthly = 0.9 * 1115.0 + 0.32 * (aime - 1115.0)
+    assert benefit[0] == pytest.approx(expected_monthly * 12, abs=1.0)
+
+
+def test_early_claiming_reduces_benefit():
+    # claiming at 62 must pay ~30% less than at FRA (67), never more
+    def benefit_at(claim_age):
+        params = make_params(
+            m=1,
+            years=45,
+            years_until_retirement=32,
+            years_until_death=45,
+            claim_age=claim_age,
+            current_age=30,
+        )
+        model = PersonalFinanceModel(params)
+        model.income = np.zeros((1, 45))
+        model.income[0, :32] = 60000.0
+        return model.calculate_us_social_security(37, np.array([claim_age]))[0]
+
+    at_62, at_67 = benefit_at(62), benefit_at(67)
+    assert at_62 < at_67
+    assert at_62 / at_67 == pytest.approx(0.70, abs=0.01)

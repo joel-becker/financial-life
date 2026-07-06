@@ -101,31 +101,43 @@ class TaxSystem:
         # Texas has no state income tax
         pass
 
-    def calculate_tax(self, income, capital_gains=0, charitable_donations=0):
+    def calculate_tax(self, income, capital_gains=0, charitable_donations=0, wage_income=None):
+        # wage_income is the payroll-tax base (FICA / National Insurance
+        # apply to wages only, not pensions or retirement withdrawals);
+        # defaults to income for backward-looking callers taxing pure wages
+        if wage_income is None:
+            wage_income = income
         if self.region == "UK":
-            return self._calculate_uk_tax(income, capital_gains)
+            return self._calculate_uk_tax(income, capital_gains, wage_income)
         elif self.region in ["California", "Massachusetts", "New York", "DC", "Texas"]:
-            return self._calculate_us_tax(income, capital_gains, charitable_donations)
+            return self._calculate_us_tax(income, capital_gains, charitable_donations, wage_income)
 
-    def _calculate_us_tax(self, income, capital_gains, charitable_donations):
+    def _calculate_us_tax(self, income, capital_gains, charitable_donations, wage_income):
         # Calculate Adjusted Gross Income (AGI)
         agi = income + capital_gains
 
         # Limit charitable donations to 60% of AGI
         deductible_donations = np.minimum(charitable_donations, agi * self.charitable_donation_limit)
 
-        # Calculate taxable income after deductions
-        taxable_income = np.maximum(agi - deductible_donations, 0)
+        # Ordinary income is taxed at federal ordinary brackets; capital
+        # gains are excluded from that base and taxed at the LTCG brackets
+        # STACKED on top of ordinary income (gains fill brackets starting
+        # where ordinary income ends). States tax gains as ordinary income.
+        ordinary_taxable = np.maximum(income - deductible_donations, 0)
 
-        federal_income_tax = self._calculate_bracketed_tax(taxable_income, self.federal_brackets)
-        state_income_tax = self._calculate_state_tax(taxable_income)
-        ss_tax = np.minimum(income, self.ss_wage_base) * self.ss_rate
-        medicare_tax = income * self.medicare_rate
-        capital_gains_tax = self._calculate_bracketed_tax(capital_gains, self.capital_gains_brackets)
+        federal_income_tax = self._calculate_bracketed_tax(ordinary_taxable, self.federal_brackets)
+        capital_gains_tax = self._calculate_bracketed_tax(
+            ordinary_taxable + capital_gains, self.capital_gains_brackets
+        ) - self._calculate_bracketed_tax(ordinary_taxable, self.capital_gains_brackets)
+        state_income_tax = self._calculate_state_tax(
+            np.maximum(ordinary_taxable + capital_gains, 0)
+        )
+        ss_tax = np.minimum(wage_income, self.ss_wage_base) * self.ss_rate
+        medicare_tax = wage_income * self.medicare_rate
 
         return federal_income_tax + state_income_tax + ss_tax + medicare_tax + capital_gains_tax
 
-    def _calculate_uk_tax(self, income, capital_gains):
+    def _calculate_uk_tax(self, income, capital_gains, wage_income):
         taxable_income = np.maximum(income - self.personal_allowance, 0.0)
         basic_rate_tax = np.minimum(taxable_income, self.basic_rate_threshold - self.personal_allowance) * self.basic_rate
         higher_rate_tax = np.maximum(np.minimum(taxable_income, self.higher_rate_threshold) - (self.basic_rate_threshold - self.personal_allowance), 0.0) * self.higher_rate
@@ -133,7 +145,7 @@ class TaxSystem:
 
         total_income_tax = basic_rate_tax + higher_rate_tax + additional_rate_tax
         
-        ni_contributions = np.minimum(np.maximum(income - self.ni_primary_threshold, 0.0), self.ni_upper_earnings_limit - self.ni_primary_threshold) * self.ni_basic_rate + np.maximum(income - self.ni_upper_earnings_limit, 0.0) * self.ni_higher_rate
+        ni_contributions = np.minimum(np.maximum(wage_income - self.ni_primary_threshold, 0.0), self.ni_upper_earnings_limit - self.ni_primary_threshold) * self.ni_basic_rate + np.maximum(wage_income - self.ni_upper_earnings_limit, 0.0) * self.ni_higher_rate
 
         taxable_capital_gains = np.maximum(capital_gains - self.capital_gains_allowance, 0.0)
         capital_gains_tax = np.minimum(taxable_capital_gains, np.maximum(self.basic_rate_threshold - income, 0)) * self.capital_gains_basic_rate + np.maximum(taxable_capital_gains - np.maximum(self.basic_rate_threshold - income, 0), 0.0) * self.capital_gains_higher_rate

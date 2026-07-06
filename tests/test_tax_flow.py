@@ -73,11 +73,15 @@ def test_taxable_income_formula():
 
 def test_donations_deducted_exactly_once():
     model = PersonalFinanceModel(make_params())
+    model.income[:, 0] = 100000.0
     model.retirement_contributions[:, 0] = 5000
     model.charitable_donations[:, 0] = 3000
     model.calculate_after_tax_income(0, np.array([100000.0]))
     expected_tax = model.tax_system.calculate_tax(
-        np.array([95000.0]), np.array([0.0]), np.array([3000.0])
+        np.array([95000.0]),
+        np.array([0.0]),
+        np.array([3000.0]),
+        wage_income=np.array([100000.0]),
     )
     assert model.tax_paid[0, 0] == pytest.approx(expected_tax[0])
 
