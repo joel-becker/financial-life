@@ -3,6 +3,7 @@ import pandas as pd
 import squigglepy as sq
 import streamlit as st
 
+from config import parameters
 from config.parameters import input_params
 from models.analysis import get_risk_aversion, marginal_change_analysis
 from models.income_paths import (
@@ -305,11 +306,9 @@ with st.expander("Portfolio Construction"):
             )
 
         portfolio_weights = np.array([stock_weight, bond_weight, real_estate_weight])
-        asset_returns = np.array([0.07, 0.03, 0.05])
-        asset_volatilities = np.array([0.15, 0.05, 0.10])
-        asset_correlations = np.array(
-            [[1.0, 0.2, 0.5], [0.2, 1.0, 0.3], [0.5, 0.3, 1.0]]
-        )
+        asset_returns = parameters.DEFAULT_ASSET_RETURNS
+        asset_volatilities = parameters.DEFAULT_ASSET_VOLATILITIES
+        asset_correlations = parameters.DEFAULT_ASSET_CORRELATIONS
     else:  # Custom portfolio
         num_assets = st.number_input(
             "Number of assets", min_value=1, max_value=10, value=3
@@ -320,8 +319,8 @@ with st.expander("Portfolio Construction"):
         asset_correlations = np.eye(num_assets)
 
         # Default values for equity, bonds, and property
-        default_returns = [0.07, 0.03, 0.05]
-        default_volatilities = [0.15, 0.05, 0.10]
+        default_returns = list(parameters.DEFAULT_ASSET_RETURNS)
+        default_volatilities = list(parameters.DEFAULT_ASSET_VOLATILITIES)
 
         # Asset features
         for i in range(num_assets):
@@ -545,7 +544,7 @@ input_params = {
     "retirement_account_start": retirement_account_start,
     "min_income": min_income,
     "years_until_retirement": retirement_age - current_age,
-    "years_until_death": age_at_death - current_age,
+    "years_until_death": age_at_death - current_age + 1,
     "claim_age": retirement_age,
     "current_age": current_age,
     "retirement_income": retirement_income,

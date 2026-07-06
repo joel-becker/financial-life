@@ -1,9 +1,11 @@
 import numpy as np
 
 class RetirementAccounts:
-    def __init__(self, region, tax_year=2023):
+    """Contribution limits and RMDs for one region (2023 values, treated
+    as constant in real terms — see TaxSystem)."""
+
+    def __init__(self, region):
         self.region = region
-        self.tax_year = tax_year
         self._initialize_account_parameters()
 
     def _initialize_account_parameters(self):

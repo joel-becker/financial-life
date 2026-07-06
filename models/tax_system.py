@@ -1,9 +1,19 @@
 import numpy as np
 
+
 class TaxSystem:
-    def __init__(self, region, tax_year=2023):
+    """Tax math for one region.
+
+    All monetary thresholds are 2023 values and are treated as constant in
+    REAL terms: the simulation runs on inflation-adjusted dollars, and
+    since US federal brackets (and, roughly, the other thresholds) are
+    indexed to inflation, holding them fixed in real terms is the intended
+    approximation. When updating for a new tax year, replace the values
+    below wholesale.
+    """
+
+    def __init__(self, region):
         self.region = region
-        self.tax_year = tax_year
         self._initialize_tax_parameters()
 
     def _initialize_tax_parameters(self):
@@ -59,6 +69,8 @@ class TaxSystem:
         self.bend_points = [1115.0, 6721.0]
         self.pia_factors = [0.9, 0.32, 0.15]
         self.fra = 67.0
+        # Maximum monthly SS benefit by claiming age (2023)
+        self.ss_max_monthly_benefit = {62: 2572.0, 67: 3627.0, 70: 4555.0}
         self.charitable_donation_limit = 0.60
 
     def _initialize_california_parameters(self):

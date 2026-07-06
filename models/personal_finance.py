@@ -421,16 +421,10 @@ class PersonalFinanceModel:
 
         pia *= age_adjustment
 
-        # Apply maximum benefit limit (example values for 2023, should be updated yearly)
-        max_benefit = np.where(
-            self.claim_age == 62,
-            2572,
-            np.where(
-                self.claim_age == self.tax_system.fra,
-                3627,
-                np.where(self.claim_age == 70, 4555, 3627),
-            ),
-        )
+        # Apply the maximum monthly benefit for the claiming age (falling
+        # back to the FRA cap for ages without a published maximum)
+        benefit_caps = self.tax_system.ss_max_monthly_benefit
+        max_benefit = benefit_caps.get(int(self.claim_age), benefit_caps[67])
 
         pia = np.minimum(pia, max_benefit)
 
