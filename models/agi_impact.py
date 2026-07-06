@@ -1,5 +1,5 @@
 import numpy as np
-from scipy import interpolate
+
 
 
 class AGIModel:
@@ -64,13 +64,9 @@ class AGIModel:
             x = np.append(x, 100)
             y = np.append(y, 1)
 
-        # Create inverse CDF interpolation
-        inv_cdf = interpolate.interp1d(
-            y, x, kind="linear", bounds_error=False, fill_value=(0, 100)
-        )
-
-        # Get AGI timing for each simulation
-        agi_timing = inv_cdf(u)
+        # Inverse-CDF sample via np.interp, which handles plateaus in the
+        # CDF (equal consecutive probabilities) without producing NaN
+        agi_timing = np.interp(u, y, x)
 
         return np.floor(agi_timing).astype(int)
 

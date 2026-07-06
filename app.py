@@ -167,6 +167,15 @@ with st.expander("Advanced Income Path Options"):
                 help="Standard deviation of income shocks.",
             )
         income_path = LinearGrowthIncomePath(base_income, annual_growth_rate, income_sd)
+    elif income_path_type == "Constant Real":
+        income_sd = st.slider(
+            "Income standard deviation",
+            0,
+            50000,
+            5000,
+            help="Standard deviation of income shocks.",
+        )
+        income_path = ConstantRealIncomePath(base_income, income_sd)
     else:  # Exponential Growth
         col1, col2 = st.columns(2)
         with col1:
@@ -629,7 +638,7 @@ with st.expander("How do I read these plots?"):
         - Retirement Withdrawals: The amount withdrawn from your retirement accounts each year.
         - Charitable Donations: The amount you donate to charity each year.
 
-        The solid line represents the median outcome, while the shaded areas represent different confidence intervals.
+        The solid line represents the mean outcome, while the shaded areas represent different credibility intervals.
         """
     )
 
