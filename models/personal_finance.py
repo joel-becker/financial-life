@@ -388,33 +388,25 @@ class PersonalFinanceModel:
         if np.all(current_age < self.claim_age):
             return np.zeros(self.m)
 
-        # Calculate AIME (Average Indexed Monthly Earnings)
+        # Calculate AIME (Average Indexed Monthly Earnings): the top 35
+        # earning years divided by 35 years of months — shorter careers
+        # average in zeros, per SSA rules
         max_taxable_earnings = self.tax_system.max_taxable_earnings
         indexed_earnings = np.minimum(
             self.income[:, : self.years_until_retirement], max_taxable_earnings
         )
-        aime = np.mean(indexed_earnings, axis=1) / 12
+        top_35 = np.sort(indexed_earnings, axis=1)[:, -35:]
+        aime = np.sum(top_35, axis=1) / (35 * 12)
 
-        # Calculate PIA (Primary Insurance Amount)
-        pia = np.zeros(self.m)
-        for i, (bend_point, factor) in enumerate(
-            zip(self.tax_system.bend_points, self.tax_system.pia_factors)
-        ):
-            if i == 0:
-                pia += np.minimum(aime, bend_point) * factor
-            elif i == len(self.tax_system.bend_points) - 1:
-                pia += np.maximum(0, aime - bend_point) * factor
-            else:
-                pia += (
-                    np.maximum(
-                        0,
-                        np.minimum(
-                            aime - self.tax_system.bend_points[i - 1],
-                            bend_point - self.tax_system.bend_points[i - 1],
-                        ),
-                    )
-                    * factor
-                )
+        # Calculate PIA (Primary Insurance Amount): 90% of AIME up to the
+        # first bend point, 32% between the bend points, 15% above
+        bend_1, bend_2 = self.tax_system.bend_points
+        factor_1, factor_2, factor_3 = self.tax_system.pia_factors
+        pia = (
+            factor_1 * np.minimum(aime, bend_1)
+            + factor_2 * np.clip(aime - bend_1, 0, bend_2 - bend_1)
+            + factor_3 * np.maximum(aime - bend_2, 0)
+        )
 
         # Adjust for claiming age
         months_diff = (self.claim_age - self.tax_system.fra) * 12
