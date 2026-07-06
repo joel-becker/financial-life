@@ -480,7 +480,9 @@ class PersonalFinanceModel:
 
         base_consumption = consumption_from_income + consumption_from_wealth
 
-        min_consumption = self.minimum_consumption / (1 + self.inflation[:, t]) ** t
+        # The model runs in real terms, so the floor applies at full value
+        # every year — no further deflation
+        min_consumption = self.minimum_consumption
 
         # Calculate currently available resources
         current_financial_wealth = (
