@@ -182,21 +182,13 @@ class PersonalFinanceModel:
         self.financial_wealth[:, 0] = (
             self.cash_start + self.market_start + self.retirement_account_start
         )
-        self.total_wealth[:, 0] = self.calculate_total_wealth(0, self.current_age)
-
-        # Initialize consumption for the first period
-        initial_income = self.income[:, 0]
-        initial_wealth = self.total_wealth[:, 0]
-        is_retired = np.full(self.m, False)
-        years_left = self.years_until_retirement - self.current_age
-        self.consumption[:, 0] = self.calculate_consumption_amount(
-            0, initial_income, is_retired, years_left
-        )
+        # total_wealth[:, 0] and consumption[:, 0] are computed by
+        # simulate_year(0); nothing reads them before that
 
     def simulate_year(self, t, real_market_returns):
         current_age = self.current_age + t
-        is_retired = current_age >= self.years_until_retirement + self.current_age
-        years_left = self.years_until_death - (current_age - self.current_age)
+        is_retired = t >= self.years_until_retirement
+        years_left = self.years_until_death - t
 
         # Calculate total wealth including future pension benefits
         self.calculate_total_wealth(t, current_age)

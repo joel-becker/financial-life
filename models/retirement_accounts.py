@@ -52,4 +52,8 @@ class RetirementAccounts:
             return self._calculate_us_rmd(account_balance, age)
 
     def _calculate_us_rmd(self, account_balance, age):
-        return np.where(age >= self.rmd_age, account_balance / (90 - age), 0)
+        # Simplified stand-in for the IRS Uniform Lifetime Table: spread the
+        # balance over the years to age 90, with a floor of 1 year so ages
+        # >= 89 don't divide by zero or go negative
+        divisor = np.maximum(90 - age, 1)
+        return np.where(age >= self.rmd_age, account_balance / divisor, 0)
