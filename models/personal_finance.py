@@ -582,6 +582,13 @@ class PersonalFinanceModel:
         real_taxable_income = (
             total_real_income - real_contributions + real_withdrawals
         )
+        # At most 85% of US Social Security benefits are taxable; the
+        # provisional-income phase-in is not modeled, so this applies the
+        # upper bound. UK State Pension is fully taxable.
+        if self.tax_region != "UK":
+            real_taxable_income = (
+                real_taxable_income - 0.15 * self.pension_income[:, t]
+            )
         self.real_taxable_income[:, t] = real_taxable_income
 
         # Payroll taxes apply to labor income only, not pension income or

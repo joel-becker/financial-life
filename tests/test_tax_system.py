@@ -9,20 +9,20 @@ from models.tax_system import TaxSystem
 
 def test_federal_tax_at_50k():
     tax = TaxSystem("Texas")
-    # 9950*0.10 + (40525-9950)*0.12 + (50000-40525)*0.22
-    expected = 995.0 + 30575.0 * 0.12 + 9475.0 * 0.22
+    # 2026 single brackets: 12400*0.10 + (50000-12400)*0.12
+    expected = 1240.0 + 37600.0 * 0.12
     result = tax._calculate_bracketed_tax(np.array([50000.0]), tax.federal_brackets)
     assert result[0] == pytest.approx(expected, abs=0.01)
 
 
 def test_federal_tax_top_bracket_marginal_rate():
     tax = TaxSystem("Texas")
-    at_600k = tax._calculate_bracketed_tax(np.array([600000.0]), tax.federal_brackets)
+    at_700k = tax._calculate_bracketed_tax(np.array([700000.0]), tax.federal_brackets)
     at_threshold = tax._calculate_bracketed_tax(
-        np.array([523600.0]), tax.federal_brackets
+        np.array([640600.0]), tax.federal_brackets
     )
-    assert at_600k[0] - at_threshold[0] == pytest.approx(
-        (600000 - 523600) * 0.37, abs=0.01
+    assert at_700k[0] - at_threshold[0] == pytest.approx(
+        (700000 - 640600) * 0.37, abs=0.01
     )
 
 
@@ -35,7 +35,8 @@ def test_zero_income_zero_tax():
 
 def test_texas_50k_no_state_tax():
     tax = TaxSystem("Texas")
-    federal = 995.0 + 30575.0 * 0.12 + 9475.0 * 0.22
+    # ordinary taxable = 50000 - 16100 standard deduction = 33900
+    federal = 1240.0 + (33900.0 - 12400.0) * 0.12
     ss = 50000.0 * 0.062
     medicare = 50000.0 * 0.0145
     result = tax.calculate_tax(np.array([50000.0]))
@@ -44,10 +45,12 @@ def test_texas_50k_no_state_tax():
 
 def test_ss_tax_capped_at_wage_base():
     tax = TaxSystem("Texas")
-    ss_at_cap = 142800.0 * 0.062
-    for income in [142800.0, 200000.0]:
+    ss_at_cap = 184500.0 * 0.062
+    for income in [184500.0, 250000.0]:
         total = tax.calculate_tax(np.array([income]))
-        federal = tax._calculate_bracketed_tax(np.array([income]), tax.federal_brackets)
+        federal = tax._calculate_bracketed_tax(
+            np.array([income - 16100.0]), tax.federal_brackets
+        )
         medicare = income * 0.0145
         assert total[0] - federal[0] - medicare == pytest.approx(ss_at_cap, abs=0.01)
 
@@ -65,16 +68,16 @@ def test_charitable_deduction_capped_at_60pct_agi():
 def test_uk_50k():
     tax = TaxSystem("UK")
     income_tax = (50000.0 - 12570.0) * 0.20
-    ni = (50000.0 - 9568.0) * 0.12
+    ni = (50000.0 - 12570.0) * 0.08
     result = tax.calculate_tax(np.array([50000.0]))
     assert result[0] == pytest.approx(income_tax + ni, abs=0.01)
 
 
 def test_uk_below_personal_allowance():
     tax = TaxSystem("UK")
+    # below both the personal allowance and the NI primary threshold
     result = tax.calculate_tax(np.array([10000.0]))
-    expected_ni = (10000.0 - 9568.0) * 0.12
-    assert result[0] == pytest.approx(expected_ni, abs=0.01)
+    assert result[0] == pytest.approx(0.0, abs=0.01)
 
 
 # Capital gains: excluded from ordinary brackets, LTCG stacked on top
@@ -113,5 +116,26 @@ def test_uk_no_ni_on_non_wage_income():
     tax = TaxSystem("UK")
     all_wages = tax.calculate_tax(np.array([50000.0]))
     no_wages = tax.calculate_tax(np.array([50000.0]), wage_income=np.array([0.0]))
-    ni = (50000.0 - 9568.0) * 0.12
+    ni = (50000.0 - 12570.0) * 0.08
     assert all_wages[0] - no_wages[0] == pytest.approx(ni, abs=0.01)
+
+
+# Standard deduction and capital-loss cap
+
+def test_standard_deduction_zeroes_low_income_federal_tax():
+    tax = TaxSystem("Texas")
+    # income at the deduction: only payroll taxes remain
+    result = tax.calculate_tax(np.array([16100.0]))
+    payroll = 16100.0 * (0.062 + 0.0145)
+    assert result[0] == pytest.approx(payroll, abs=0.01)
+
+
+def test_capital_losses_offset_at_most_3000():
+    tax = TaxSystem("Texas")
+    base = tax.calculate_tax(np.array([100000.0]), np.array([0.0]))
+    small_loss = tax.calculate_tax(np.array([100000.0]), np.array([-3000.0]))
+    huge_loss = tax.calculate_tax(np.array([100000.0]), np.array([-50000.0]))
+    # -50k must be treated exactly like -3k (no carryforward modeled)
+    assert huge_loss[0] == pytest.approx(small_loss[0], abs=0.01)
+    # and the offset saves tax at the 22% marginal rate
+    assert base[0] - small_loss[0] == pytest.approx(3000.0 * 0.22, abs=0.01)

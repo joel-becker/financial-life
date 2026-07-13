@@ -12,10 +12,12 @@ def test_rmd_before_rmd_age_is_zero():
     assert rmd[0] == 0.0
 
 
-def test_rmd_at_72_uses_remaining_horizon():
+def test_rmd_starts_at_73_secure_2_0():
     accounts = RetirementAccounts("California")
-    rmd = accounts.calculate_rmd(np.array([180000.0]), np.array([72]))
-    assert rmd[0] == pytest.approx(180000.0 / 18)
+    # SECURE 2.0 moved the RMD age to 73
+    assert accounts.calculate_rmd(np.array([180000.0]), np.array([72]))[0] == 0.0
+    rmd = accounts.calculate_rmd(np.array([180000.0]), np.array([73]))
+    assert rmd[0] == pytest.approx(180000.0 / 17)
 
 
 def test_rmd_at_and_beyond_90_is_finite_and_positive():
@@ -41,7 +43,7 @@ def test_us_401k_limit_applies():
     contribution = accounts.calculate_contribution(
         np.array([500000.0]), np.array([40]), 0.1
     )
-    assert contribution[0] == 22500.0
+    assert contribution[0] == 24500.0
 
 
 def test_us_catchup_after_50():
@@ -49,4 +51,4 @@ def test_us_catchup_after_50():
     contribution = accounts.calculate_contribution(
         np.array([500000.0]), np.array([55]), 0.1
     )
-    assert contribution[0] == 30000.0
+    assert contribution[0] == 32500.0

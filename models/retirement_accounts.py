@@ -17,18 +17,19 @@ class RetirementAccounts:
             raise ValueError(f"Unsupported region: {self.region}")
 
     def _initialize_uk_parameters(self):
-        self.pension_annual_allowance = 40000
-        self.lifetime_allowance = 1073100
+        # UK 2025/26; the lifetime allowance was abolished in 2024
+        self.pension_annual_allowance = 60000
 
     def _initialize_us_parameters(self):
-        self.traditional_401k_limit = 22500
-        self.roth_401k_limit = 22500
-        self.traditional_ira_limit = 6500
-        self.roth_ira_limit = 6500
+        # US 2026 limits; RMD age 73 per SECURE 2.0
+        self.traditional_401k_limit = 24500
+        self.roth_401k_limit = 24500
+        self.traditional_ira_limit = 7500
+        self.roth_ira_limit = 7500
         self.catchup_contribution_age = 50
-        self.catchup_401k = 7500
-        self.catchup_ira = 1000
-        self.rmd_age = 72
+        self.catchup_401k = 8000
+        self.catchup_ira = 1100
+        self.rmd_age = 73
 
     def calculate_contribution(self, income, age, contribution_rate):
         if self.region == "UK":
