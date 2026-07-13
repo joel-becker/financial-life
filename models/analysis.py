@@ -9,7 +9,10 @@ def calculate_crra_utility(consumption, risk_aversion):
     else:
         return (consumption ** (1 - risk_aversion) - 1) / (1 - risk_aversion)
 
-def calculate_utility(params, n_sims, risk_aversion):
+def calculate_utility(params, n_sims, risk_aversion, seed=0):
+    # Fixed seed = common random numbers across candidate plans, so
+    # utility differences reflect the parameter change, not sampling noise
+    np.random.seed(seed)
     model = PersonalFinanceModel(params)
     model.simulate()
     results = model.get_results()
@@ -54,7 +57,9 @@ def marginal_change_analysis(base_params, n_sims, risk_aversion):
                     new_params[param] = max(0, new_params[param] + delta)
                 
                 new_utility = calculate_utility(new_params, n_sims, risk_aversion)
-                percent_change = (new_utility - base_utility) / base_utility * 100
+                # abs() so the sign means better/worse even when CRRA
+                # utility is negative (risk_aversion > 1)
+                percent_change = (new_utility - base_utility) / abs(base_utility) * 100
                 
                 if param == 'portfolio_weights':
                     change_description = [f"{d:.2f}" for d in delta]
@@ -92,8 +97,8 @@ def focused_what_if_analysis(base_params, changes, n_sims, risk_aversion):
             new_params[param] = new_value
         
         new_utility = calculate_utility(new_params, n_sims, risk_aversion)
-        percent_change = (new_utility - base_utility) / base_utility * 100
-        
+        percent_change = (new_utility - base_utility) / abs(base_utility) * 100
+
         results.append({
             'parameter': param,
             'old_value': base_params[param] if param != 'portfolio_weights[0]' else base_params['portfolio_weights'][0],

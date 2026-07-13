@@ -1,5 +1,5 @@
 import numpy as np
-from scipy import interpolate
+
 
 
 class AGIModel:
@@ -20,8 +20,7 @@ class AGIModel:
         self.m = m
         self.years = years
 
-        # Create interpolated CDF and PDF
-        self._setup_distributions()
+        self._validate_cdf_points()
 
         # Generate AGI timing for each simulation
         self.agi_timing = self._generate_agi_timing()
@@ -32,37 +31,30 @@ class AGIModel:
             self.returns_multiplier
         )
 
-    def _setup_distributions(self):
-        """Create interpolated CDF and PDF from provided points."""
-        years = np.array(list(self.cdf_points.keys()))
-        probs = np.array(list(self.cdf_points.values()))
-
-        # Add endpoints if not provided
-        if 0 not in years:
-            years = np.insert(years, 0, 0)
-            probs = np.insert(probs, 0, 0)
-        if 100 not in years:  # Far future endpoint
-            years = np.append(years, 100)
-            probs = np.append(probs, 1)
-
-        # Create interpolated CDF
-        self.cdf = interpolate.interp1d(years, probs, kind="linear")
-
-        # Approximate PDF using finite differences
-        dx = 0.1
-        x_pdf = np.arange(0, 100, dx)
-        y_cdf = self.cdf(x_pdf)
-        self.pdf = np.gradient(y_cdf, dx)
-        self.pdf_x = x_pdf
+    def _validate_cdf_points(self):
+        """A CDF must have probabilities in [0, 1] that don't decrease as
+        the horizon grows — e.g. P(AGI within 5y) can't exceed P(AGI
+        within 10y). Inverse-CDF sampling on non-monotonic points would
+        produce nonsensical arrival times, so fail loudly instead."""
+        years = np.array(sorted(self.cdf_points.keys()))
+        probs = np.array([self.cdf_points[y] for y in years])
+        if np.any((probs < 0) | (probs > 1)):
+            raise ValueError(f"AGI CDF probabilities must be in [0, 1]: {self.cdf_points}")
+        if np.any(np.diff(probs) < 0):
+            raise ValueError(
+                "AGI CDF probabilities must not decrease as the year "
+                f"horizon grows: {self.cdf_points}"
+            )
 
     def _generate_agi_timing(self):
         """Generate AGI arrival times for each simulation."""
         # Generate uniform random numbers
         u = np.random.uniform(0, 1, self.m)
 
-        # Create inverse CDF points
-        x = np.array(list(self.cdf_points.keys()))
-        y = np.array(list(self.cdf_points.values()))
+        # Create inverse CDF points (sorted by year; dict order is not
+        # guaranteed to be)
+        x = np.array(sorted(self.cdf_points.keys()))
+        y = np.array([self.cdf_points[year] for year in x])
 
         # Add endpoints if not provided
         if 0 not in x:
@@ -72,13 +64,9 @@ class AGIModel:
             x = np.append(x, 100)
             y = np.append(y, 1)
 
-        # Create inverse CDF interpolation
-        inv_cdf = interpolate.interp1d(
-            y, x, kind="linear", bounds_error=False, fill_value=(0, 100)
-        )
-
-        # Get AGI timing for each simulation
-        agi_timing = inv_cdf(u)
+        # Inverse-CDF sample via np.interp, which handles plateaus in the
+        # CDF (equal consecutive probabilities) without producing NaN
+        agi_timing = np.interp(u, y, x)
 
         return np.floor(agi_timing).astype(int)
 

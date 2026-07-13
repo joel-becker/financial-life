@@ -18,18 +18,18 @@ class TestPersonalFinanceModel(unittest.TestCase):
         self.model = PersonalFinanceModel(self.input_params)
 
     def test_initialization(self):
-        self.assertEqual(self.model.m, 1000)
-        self.assertEqual(self.model.years, 30)
-        self.assertEqual(self.model.r, 0.05)
+        self.assertEqual(self.model.m, input_params["m"])
+        self.assertEqual(self.model.years, input_params["years"])
+        self.assertEqual(self.model.r, input_params["r"])
 
     def test_generate_market_returns(self):
         returns = self.model.generate_market_returns()
-        self.assertEqual(returns.shape, (1000, 30))
+        self.assertEqual(returns.shape, (input_params["m"], input_params["years"]))
         self.assertTrue(np.all(returns > -1))  # Returns should be greater than -100%
 
     def test_generate_ar_inflation(self):
         inflation = self.model.generate_ar_inflation()
-        self.assertEqual(inflation.shape, (1000, 30))
+        self.assertEqual(inflation.shape, (input_params["m"], input_params["years"]))
         self.assertTrue(np.all(inflation > -1))  # Inflation should be positive
 
     def test_simulate(self):
@@ -38,7 +38,7 @@ class TestPersonalFinanceModel(unittest.TestCase):
         
         # Check that all result arrays have the correct shape
         for key, value in results.items():
-            self.assertEqual(value.shape, (1000, 30), f"{key} has incorrect shape")
+            self.assertEqual(value.shape, (input_params["m"], input_params["years"]), f"{key} has incorrect shape")
 
         # Check that financial wealth is non-negative
         self.assertTrue(np.all(results['financial_wealth'] >= 0))

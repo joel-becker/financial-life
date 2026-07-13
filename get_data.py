@@ -1,9 +1,10 @@
+import os
+
 import yfinance as yf
 import fredapi
-from datetime import datetime
 
-import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # Fetch historical data from Yahoo Finance
 ticker = yf.Ticker("SPY")  # Let's use S&P 500 as a proxy for the market
@@ -15,10 +16,8 @@ annual_returns = (
     hist["Return"].groupby(hist.index.year).apply(lambda x: (1 + x).prod() - 1)
 )
 
-# Fetch inflation data from FRED
-fred = fredapi.Fred(
-    api_key="7d557b8d855748b790c863e65eb149ed"
-)  # Replace with your actual FRED API key
+# Fetch inflation data from FRED (set FRED_API_KEY in your environment)
+fred = fredapi.Fred(api_key=os.environ["FRED_API_KEY"])
 inflation = fred.get_series("CPIAUCNS")  # CPI Inflation Rate
 inflation = inflation.resample("Y").last()  # Resample to yearly data
 
@@ -49,6 +48,7 @@ real_returns = (1 + aligned_data["Return"]) / (1 + aligned_data["Inflation"]) - 
 
 
 # Plot the distribution of real returns
-st.pyplot(real_returns.hist(bins=20))
+real_returns.hist(bins=20)
+plt.show()
 
 # Now, you can use the distribution of real returns to inform the returns in your model.

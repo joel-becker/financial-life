@@ -16,7 +16,7 @@ class TestPersonalFinanceModel(unittest.TestCase):
             "claim_age": 67,
             "current_age": 30,
             "retirement_income": 40000,
-            "income_path": ConstantRealIncomePath(100000),
+            "income_path": ConstantRealIncomePath(100000, 0),
             "min_income": 30000,
             "inflation_rate": 0.02,
             "ar_inflation_coefficients": [0],

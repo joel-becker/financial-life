@@ -1,22 +1,19 @@
-from utils.plot import plot_model_output
-from models.personal_finance import PersonalFinanceModel
+import numpy as np
+import pandas as pd
+import squigglepy as sq
+import streamlit as st
+
+from config import parameters
+from config.parameters import input_params
+from models.analysis import get_risk_aversion, marginal_change_analysis
 from models.income_paths import (
     ARIncomePath,
     ConstantRealIncomePath,
     ExponentialGrowthIncomePath,
     LinearGrowthIncomePath,
 )
-from models.analysis import get_risk_aversion, marginal_change_analysis
-from config.parameters import input_params
-import utilities as utils
-import sys
-
-import numpy as np
-import pandas as pd
-import squigglepy as sq
-import streamlit as st
-
-sys.path.append("src")
+from models.personal_finance import PersonalFinanceModel
+from utils.plot import plot_model_output
 
 # Configurations
 st.set_page_config(
@@ -171,8 +168,16 @@ with st.expander("Advanced Income Path Options"):
                 5000,
                 help="Standard deviation of income shocks.",
             )
-        income_path = LinearGrowthIncomePath(
-            base_income, annual_growth_rate, income_sd)
+        income_path = LinearGrowthIncomePath(base_income, annual_growth_rate, income_sd)
+    elif income_path_type == "Constant Real":
+        income_sd = st.slider(
+            "Income standard deviation",
+            0,
+            50000,
+            5000,
+            help="Standard deviation of income shocks.",
+        )
+        income_path = ConstantRealIncomePath(base_income, income_sd)
     else:  # Exponential Growth
         col1, col2 = st.columns(2)
         with col1:
@@ -311,13 +316,10 @@ with st.expander("Portfolio Construction"):
                 help="Proportion of your portfolio allocated to real estate.",
             )
 
-        portfolio_weights = np.array(
-            [stock_weight, bond_weight, real_estate_weight])
-        asset_returns = np.array([0.07, 0.03, 0.05])
-        asset_volatilities = np.array([0.15, 0.05, 0.10])
-        asset_correlations = np.array(
-            [[1.0, 0.2, 0.5], [0.2, 1.0, 0.3], [0.5, 0.3, 1.0]]
-        )
+        portfolio_weights = np.array([stock_weight, bond_weight, real_estate_weight])
+        asset_returns = parameters.DEFAULT_ASSET_RETURNS
+        asset_volatilities = parameters.DEFAULT_ASSET_VOLATILITIES
+        asset_correlations = parameters.DEFAULT_ASSET_CORRELATIONS
     else:  # Custom portfolio
         num_assets = st.number_input(
             "Number of assets", min_value=1, max_value=10, value=3
@@ -328,8 +330,8 @@ with st.expander("Portfolio Construction"):
         asset_correlations = np.eye(num_assets)
 
         # Default values for equity, bonds, and property
-        default_returns = [0.07, 0.03, 0.05]
-        default_volatilities = [0.15, 0.05, 0.10]
+        default_returns = list(parameters.DEFAULT_ASSET_RETURNS)
+        default_volatilities = list(parameters.DEFAULT_ASSET_VOLATILITIES)
 
         # Asset features
         for i in range(num_assets):
@@ -554,7 +556,7 @@ input_params = {
     "retirement_account_start": retirement_account_start,
     "min_income": min_income,
     "years_until_retirement": retirement_age - current_age,
-    "years_until_death": age_at_death - current_age,
+    "years_until_death": age_at_death - current_age + 1,
     "claim_age": retirement_age,
     "current_age": current_age,
     "retirement_income": retirement_income,
@@ -639,7 +641,7 @@ with st.expander("How do I read these plots?"):
         - Retirement Withdrawals: The amount withdrawn from your retirement accounts each year.
         - Charitable Donations: The amount you donate to charity each year.
 
-        The solid line represents the median outcome, while the shaded areas represent different confidence intervals.
+        The solid line represents the mean outcome, while the shaded areas represent different credibility intervals.
         """
     )
 

@@ -1,5 +1,4 @@
 ![build](https://github.com/joel-becker/financial-life/actions/workflows/python-app.yml/badge.svg)
-![codecov](https://codecov.io/gh/joel-becker/financial-life/branch/main/graph/badge.svg)
 
 
 # financial-life
