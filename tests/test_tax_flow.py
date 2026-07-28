@@ -139,3 +139,12 @@ def test_capital_gains_taxed_in_year_earned():
     model_no_gains.initialize_simulation()
     model_no_gains.simulate_year(0, np.zeros((1, 3)))
     assert model.tax_paid[0, 0] > model_no_gains.tax_paid[0, 0]
+
+
+def test_only_85_pct_of_social_security_is_taxable():
+    # US SS benefits are at most 85% includable in taxable income
+    model = PersonalFinanceModel(make_params())
+    model.pension_income[:, 0] = 20000.0
+    model.calculate_after_tax_income(0, np.array([50000.0]))
+    # taxable = 50000 - 0.15 * 20000
+    assert model.real_taxable_income[0, 0] == pytest.approx(47000.0)

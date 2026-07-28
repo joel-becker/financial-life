@@ -166,7 +166,8 @@ class PersonalFinanceModel:
         cumulative_inflation = np.cumprod(1 + self.inflation, axis=1)
         real_market_returns = (1 + self.market_returns) / (1 + self.inflation) - 1
 
-        self.income = np.maximum(self.income / cumulative_inflation, self.min_income)
+        self.income = self.income / cumulative_inflation
+        self.apply_income_floor()
 
         self.initialize_simulation()
 
@@ -306,13 +307,27 @@ class PersonalFinanceModel:
 
         return annual_tax * years_left
 
+    def apply_income_floor(self):
+        # min_income is a reservation wage: it floors labor income during
+        # working years only, and must not resurrect wages for retirees
+        working_years = min(self.years_until_retirement, self.years)
+        self.income[:, :working_years] = np.maximum(
+            self.income[:, :working_years], self.min_income
+        )
+
     def calculate_total_income(self, t, current_age):
         base_income = self.income[:, t]
         self.pension_income[:, t] = self.calculate_pension_income(t, current_age)
 
         total_income = base_income + self.pension_income[:, t]
 
-        return np.maximum(total_income, self.min_income)
+        # Non-wage retirement income (annuities, part-time work modeled as
+        # a lump sum) — the app's "Retirement income" input, previously a
+        # silent no-op
+        if t >= self.years_until_retirement:
+            total_income = total_income + self.retirement_income
+
+        return total_income
 
     def calculate_retirement_withdrawal(
         self, t, current_age, total_real_income, consumption
@@ -567,6 +582,13 @@ class PersonalFinanceModel:
         real_taxable_income = (
             total_real_income - real_contributions + real_withdrawals
         )
+        # At most 85% of US Social Security benefits are taxable; the
+        # provisional-income phase-in is not modeled, so this applies the
+        # upper bound. UK State Pension is fully taxable.
+        if self.tax_region != "UK":
+            real_taxable_income = (
+                real_taxable_income - 0.15 * self.pension_income[:, t]
+            )
         self.real_taxable_income[:, t] = real_taxable_income
 
         # Payroll taxes apply to labor income only, not pension income or

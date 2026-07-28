@@ -4,12 +4,12 @@ import numpy as np
 class TaxSystem:
     """Tax math for one region.
 
-    All monetary thresholds are 2023 values and are treated as constant in
-    REAL terms: the simulation runs on inflation-adjusted dollars, and
-    since US federal brackets (and, roughly, the other thresholds) are
-    indexed to inflation, holding them fixed in real terms is the intended
-    approximation. When updating for a new tax year, replace the values
-    below wholesale.
+    Monetary thresholds are treated as constant in REAL terms: the
+    simulation runs on inflation-adjusted dollars, and since US federal
+    brackets (and, roughly, the other thresholds) are indexed to
+    inflation, holding them fixed in real terms is the intended
+    approximation. Each block below is commented with its tax-year
+    vintage; when refreshing, replace a block wholesale.
     """
 
     def __init__(self, region):
@@ -35,50 +35,58 @@ class TaxSystem:
             raise ValueError(f"Unsupported tax region: {self.region}")
 
     def _initialize_uk_parameters(self):
+        # UK 2025/26 tax year. The personal-allowance taper above 100k
+        # income is not modeled.
         self.personal_allowance = 12570.0
         self.basic_rate_threshold = 50270.0
-        self.higher_rate_threshold = 150000.0
-        self.additional_rate_threshold = 125140.0
+        self.higher_rate_threshold = 125140.0  # additional rate starts here
         self.basic_rate = 0.20
         self.higher_rate = 0.40
         self.additional_rate = 0.45
-        self.ni_primary_threshold = 9568.0
+        self.ni_primary_threshold = 12570.0
         self.ni_upper_earnings_limit = 50270.0
-        self.ni_basic_rate = 0.12
+        self.ni_basic_rate = 0.08
         self.ni_higher_rate = 0.02
-        self.capital_gains_allowance = 6000.0
-        self.capital_gains_basic_rate = 0.10
-        self.capital_gains_higher_rate = 0.20
-        self.uk_full_pension = 10600.0
+        self.capital_gains_allowance = 3000.0
+        self.capital_gains_basic_rate = 0.18
+        self.capital_gains_higher_rate = 0.24
+        self.uk_full_pension = 11973.0  # full new State Pension 2025/26
         self.uk_qualifying_years = 35.0
 
     def _initialize_us_parameters(self):
-        # Federal tax parameters (common for all US states)
+        # Federal parameters, 2026 tax year (single filer)
         self.federal_brackets = [
-            (0.0, 0.10), (9950.0, 0.12), (40525.0, 0.22),
-            (86375.0, 0.24), (164925.0, 0.32), (209425.0, 0.35),
-            (523600.0, 0.37)
+            (0.0, 0.10), (12400.0, 0.12), (50400.0, 0.22),
+            (105700.0, 0.24), (201775.0, 0.32), (256225.0, 0.35),
+            (640600.0, 0.37)
         ]
-        self.ss_wage_base = 142800.0
+        self.standard_deduction = 16100.0
+        self.ss_wage_base = 184500.0
         self.ss_rate = 0.062
         self.medicare_rate = 0.0145
         self.capital_gains_brackets = [
-            (0.0, 0.0), (40400.0, 0.15), (445850.0, 0.20)
+            (0.0, 0.0), (49450.0, 0.15), (545500.0, 0.20)
         ]
-        self.max_taxable_earnings = 160200.0
-        self.bend_points = [1115.0, 6721.0]
+        # Net capital losses offset at most this much ordinary income per
+        # year; carryforwards are not modeled
+        self.capital_loss_limit = 3000.0
+        self.max_taxable_earnings = 184500.0
+        self.bend_points = [1226.0, 7391.0]
         self.pia_factors = [0.9, 0.32, 0.15]
         self.fra = 67.0
-        # Maximum monthly SS benefit by claiming age (2023)
-        self.ss_max_monthly_benefit = {62: 2572.0, 67: 3627.0, 70: 4555.0}
+        # Maximum monthly SS benefit by claiming age (2026; 62/70 derived
+        # from 2025 values + COLA, approximate)
+        self.ss_max_monthly_benefit = {62: 2910.0, 67: 4152.0, 70: 5251.0}
         self.charitable_donation_limit = 0.60
 
     def _initialize_california_parameters(self):
+        # California 2025 tax year (single filer; latest published)
         self.ca_brackets = [
-            (0.0, 0.01), (8932.0, 0.02), (21175.0, 0.04),
-            (33421.0, 0.06), (46394.0, 0.08), (58634.0, 0.093),
-            (299508.0, 0.103), (359407.0, 0.113), (599012.0, 0.123)
+            (0.0, 0.01), (10756.0, 0.02), (25499.0, 0.04),
+            (40245.0, 0.06), (55866.0, 0.08), (70606.0, 0.093),
+            (360659.0, 0.103), (432787.0, 0.113), (721314.0, 0.123)
         ]
+        self.ca_standard_deduction = 5540.0
 
     def _initialize_massachusetts_parameters(self):
         self.ma_rate = 0.05  # Massachusetts has a flat income tax rate
@@ -113,25 +121,32 @@ class TaxSystem:
             return self._calculate_us_tax(income, capital_gains, charitable_donations, wage_income)
 
     def _calculate_us_tax(self, income, capital_gains, charitable_donations, wage_income):
-        # Calculate Adjusted Gross Income (AGI)
-        agi = income + capital_gains
+        # Net capital losses offset at most capital_loss_limit of ordinary
+        # income; gains above zero are taxed at LTCG rates
+        capped_gains = np.maximum(capital_gains, -self.capital_loss_limit)
+        loss_offset = np.minimum(capped_gains, 0.0)
+        positive_gains = np.maximum(capped_gains, 0.0)
+
+        agi = income + capped_gains
 
         # Limit charitable donations to 60% of AGI
-        deductible_donations = np.minimum(charitable_donations, agi * self.charitable_donation_limit)
-
-        # Ordinary income is taxed at federal ordinary brackets; capital
-        # gains are excluded from that base and taxed at the LTCG brackets
-        # STACKED on top of ordinary income (gains fill brackets starting
-        # where ordinary income ends). States tax gains as ordinary income.
-        ordinary_taxable = np.maximum(income - deductible_donations, 0)
-
-        federal_income_tax = self._calculate_bracketed_tax(ordinary_taxable, self.federal_brackets)
-        capital_gains_tax = self._calculate_bracketed_tax(
-            ordinary_taxable + capital_gains, self.capital_gains_brackets
-        ) - self._calculate_bracketed_tax(ordinary_taxable, self.capital_gains_brackets)
-        state_income_tax = self._calculate_state_tax(
-            np.maximum(ordinary_taxable + capital_gains, 0)
+        deductible_donations = np.minimum(
+            charitable_donations, np.maximum(agi, 0) * self.charitable_donation_limit
         )
+
+        # Ordinary income (after loss offset, donations, and the standard
+        # deduction) is taxed at federal ordinary brackets; capital gains
+        # are taxed at the LTCG brackets STACKED on top of ordinary income
+        # (gains fill brackets starting where ordinary income ends).
+        # States tax gains as ordinary income.
+        ordinary_base = np.maximum(income + loss_offset - deductible_donations, 0)
+        federal_taxable = np.maximum(ordinary_base - self.standard_deduction, 0)
+
+        federal_income_tax = self._calculate_bracketed_tax(federal_taxable, self.federal_brackets)
+        capital_gains_tax = self._calculate_bracketed_tax(
+            federal_taxable + positive_gains, self.capital_gains_brackets
+        ) - self._calculate_bracketed_tax(federal_taxable, self.capital_gains_brackets)
+        state_income_tax = self._calculate_state_tax(ordinary_base + positive_gains)
         ss_tax = np.minimum(wage_income, self.ss_wage_base) * self.ss_rate
         medicare_tax = wage_income * self.medicare_rate
 
@@ -154,7 +169,8 @@ class TaxSystem:
 
     def _calculate_state_tax(self, taxable_income):
         if self.region == "California":
-            return self._calculate_bracketed_tax(taxable_income, self.ca_brackets)
+            ca_taxable = np.maximum(taxable_income - self.ca_standard_deduction, 0)
+            return self._calculate_bracketed_tax(ca_taxable, self.ca_brackets)
         elif self.region == "Massachusetts":
             return taxable_income * self.ma_rate
         elif self.region == "New York":

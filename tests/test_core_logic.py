@@ -176,6 +176,7 @@ class TestPersonalFinanceModel(unittest.TestCase):
     
     def test_simulate_year(self):
         self.model.initialize_simulation()
+        self.model.income = np.array([[100000.0, 102000.0]])
         real_market_returns = np.array([[0.05, 0.05]])
         self.model.simulate_year(0, real_market_returns)
         

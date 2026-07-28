@@ -49,11 +49,11 @@ def test_before_claim_age_is_zero():
 
 
 def test_exact_pia_all_three_bands():
-    # AIME 6666.67 (35y at 80k): 0.9*1115 + 0.32*(6666.67-1115) = 2780.03/mo
+    # AIME 6666.67 (35y at 80k) with 2026 bend points 1226/7391
     model = make_retired_model(35, 80000.0)
     benefit = model.calculate_us_social_security(37, np.array([67]))
     aime = 80000.0 * 35 / (35 * 12)
-    expected_monthly = 0.9 * 1115.0 + 0.32 * (aime - 1115.0)
+    expected_monthly = 0.9 * 1226.0 + 0.32 * (aime - 1226.0)
     assert benefit[0] == pytest.approx(expected_monthly * 12, abs=1.0)
 
 
