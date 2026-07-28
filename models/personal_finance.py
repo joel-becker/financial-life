@@ -387,7 +387,11 @@ class PersonalFinanceModel:
         return pension_amount
 
     def calculate_us_social_security(self, t, current_age):
-        if np.all(current_age < self.claim_age):
+        # SSA pays no earlier than 62 and delayed credits stop at 70; the
+        # app ties claim age to retirement age, which can be far outside
+        # that range
+        claim_age = float(np.clip(self.claim_age, 62, 70))
+        if np.all(current_age < claim_age):
             return np.zeros(self.m)
 
         # Calculate AIME (Average Indexed Monthly Earnings): the top 35
@@ -413,28 +417,30 @@ class PersonalFinanceModel:
         # Adjust for claiming age: ~5/9% per month reduction for the first
         # 36 months before FRA, ~5/12% per month beyond that; ~2/3% per
         # month delayed-retirement credit after FRA
-        if self.claim_age < self.tax_system.fra:
-            months_early = (self.tax_system.fra - self.claim_age) * 12
+        if claim_age < self.tax_system.fra:
+            months_early = (self.tax_system.fra - claim_age) * 12
             age_adjustment = (
                 1
                 - 0.00555556 * np.minimum(36, months_early)
                 - 0.00416667 * np.maximum(0, months_early - 36)
             )
         else:
-            months_delayed = (self.claim_age - self.tax_system.fra) * 12
+            months_delayed = (claim_age - self.tax_system.fra) * 12
             age_adjustment = 1 + 0.00666667 * months_delayed
 
         pia *= age_adjustment
 
-        # Apply the maximum monthly benefit for the claiming age (falling
-        # back to the FRA cap for ages without a published maximum)
+        # Apply the maximum monthly benefit, interpolating between the
+        # published caps at 62/67/70 so the cap grows with claiming age
+        # (a flat FRA fallback made benefits non-monotone in claim age)
         benefit_caps = self.tax_system.ss_max_monthly_benefit
-        max_benefit = benefit_caps.get(int(self.claim_age), benefit_caps[67])
+        cap_ages = sorted(benefit_caps)
+        max_benefit = np.interp(claim_age, cap_ages, [benefit_caps[a] for a in cap_ages])
 
         pia = np.minimum(pia, max_benefit)
 
         # Return the annual benefit in real terms
-        return np.where(current_age >= self.claim_age, pia * 12, 0)
+        return np.where(current_age >= claim_age, pia * 12, 0)
 
     def calculate_consumption_amount(
         self, t, total_real_income, is_retired, years_left

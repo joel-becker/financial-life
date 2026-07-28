@@ -52,7 +52,10 @@ def test_ss_tax_capped_at_wage_base():
             np.array([income - 16100.0]), tax.federal_brackets
         )
         medicare = income * 0.0145
-        assert total[0] - federal[0] - medicare == pytest.approx(ss_at_cap, abs=0.01)
+        additional_medicare = max(income - 200000.0, 0) * 0.009
+        assert total[0] - federal[0] - medicare - additional_medicare == pytest.approx(
+            ss_at_cap, abs=0.01
+        )
 
 
 def test_charitable_deduction_capped_at_60pct_agi():
@@ -139,3 +142,62 @@ def test_capital_losses_offset_at_most_3000():
     assert huge_loss[0] == pytest.approx(small_loss[0], abs=0.01)
     # and the offset saves tax at the 22% marginal rate
     assert base[0] - small_loss[0] == pytest.approx(3000.0 * 0.22, abs=0.01)
+
+
+# Itemize-or-standard, deduction sheltering of gains, NIIT, Additional Medicare
+
+def test_small_donation_does_not_beat_standard_deduction():
+    tax = TaxSystem("Texas")
+    no_donation = tax.calculate_tax(np.array([100000.0]), np.array([0.0]), np.array([0.0]))
+    small_donation = tax.calculate_tax(np.array([100000.0]), np.array([0.0]), np.array([5000.0]))
+    assert small_donation[0] == pytest.approx(no_donation[0], abs=0.01)
+
+
+def test_large_donation_itemizes_instead_of_standard():
+    tax = TaxSystem("Texas")
+    std = tax.calculate_tax(np.array([100000.0]), np.array([0.0]), np.array([0.0]))
+    itemized = tax.calculate_tax(np.array([100000.0]), np.array([0.0]), np.array([30000.0]))
+    # deduction rises from 16100 to 30000; savings at the 22% marginal rate
+    assert std[0] - itemized[0] == pytest.approx((30000.0 - 16100.0) * 0.22, abs=0.01)
+
+
+def test_unused_deduction_shelters_capital_gains():
+    tax = TaxSystem("Texas")
+    # retiree: no ordinary income, 60k gains. Taxable = 60000-16100=43900,
+    # entirely inside the 0% LTCG bracket -> zero tax
+    result = tax.calculate_tax(
+        np.array([0.0]), np.array([60000.0]), wage_income=np.array([0.0])
+    )
+    assert result[0] == pytest.approx(0.0, abs=0.01)
+    # 70k gains: taxable gains 53900, of which 4450 above the 0% bracket
+    result = tax.calculate_tax(
+        np.array([0.0]), np.array([70000.0]), wage_income=np.array([0.0])
+    )
+    assert result[0] == pytest.approx((53900.0 - 49450.0) * 0.15, abs=0.01)
+
+
+def test_niit_on_gains_above_200k_magi():
+    tax = TaxSystem("Texas")
+    base = tax.calculate_tax(np.array([250000.0]), np.array([0.0]))
+    with_gains = tax.calculate_tax(np.array([250000.0]), np.array([50000.0]))
+    # marginal on 50k gains at 250k income: 15% LTCG + 3.8% NIIT (fully above threshold)
+    assert with_gains[0] - base[0] == pytest.approx(50000.0 * (0.15 + 0.038), abs=0.01)
+
+
+def test_no_niit_below_200k_magi():
+    tax = TaxSystem("Texas")
+    base = tax.calculate_tax(np.array([100000.0]), np.array([0.0]))
+    with_gains = tax.calculate_tax(np.array([100000.0]), np.array([20000.0]))
+    # 120k MAGI < 200k threshold: LTCG only, no NIIT
+    assert with_gains[0] - base[0] == pytest.approx(20000.0 * 0.15, abs=0.01)
+
+
+def test_additional_medicare_above_200k_wages():
+    tax = TaxSystem("Texas")
+    all_wages = tax.calculate_tax(np.array([300000.0]))
+    partial_wages = tax.calculate_tax(np.array([300000.0]), wage_income=np.array([200000.0]))
+    # extra 100k of wages above the 200k threshold: medicare 1.45% + additional 0.9%
+    # (SS already capped at the wage base below 200k)
+    assert all_wages[0] - partial_wages[0] == pytest.approx(
+        100000.0 * (0.0145 + 0.009), abs=0.01
+    )

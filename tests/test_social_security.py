@@ -76,3 +76,33 @@ def test_early_claiming_reduces_benefit():
     at_62, at_67 = benefit_at(62), benefit_at(67)
     assert at_62 < at_67
     assert at_62 / at_67 == pytest.approx(0.70, abs=0.01)
+
+
+def benefit_at_claim_age(claim_age, annual_income=150000.0):
+    params = make_params(
+        m=1,
+        years=60,
+        years_until_retirement=32,
+        years_until_death=60,
+        claim_age=claim_age,
+        current_age=30,
+    )
+    model = PersonalFinanceModel(params)
+    model.income = np.zeros((1, 60))
+    model.income[0, :32] = annual_income
+    return model.calculate_us_social_security(45, np.array([max(claim_age, 62)]))[0]
+
+
+def test_claim_age_clamped_to_ssa_range():
+    # SSA pays no earlier than 62 and credits stop at 70
+    assert benefit_at_claim_age(40) == pytest.approx(benefit_at_claim_age(62))
+    assert benefit_at_claim_age(75) == pytest.approx(benefit_at_claim_age(70))
+    assert benefit_at_claim_age(40) > 0
+
+
+def test_benefits_monotone_in_claim_age():
+    # later claiming can never pay less per year, including for high
+    # earners whose benefit hits the age-dependent cap
+    for income in (80000.0, 250000.0):
+        benefits = [benefit_at_claim_age(a, income) for a in range(62, 71)]
+        assert all(b2 >= b1 - 0.01 for b1, b2 in zip(benefits, benefits[1:])), benefits
