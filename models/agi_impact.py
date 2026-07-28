@@ -72,11 +72,9 @@ class AGIModel:
 
     def _create_multiplier_array(self, multiplier):
         """Create array of multipliers for each simulation and year."""
-        multipliers = np.ones((self.m, self.years))
-        for i in range(self.m):
-            if self.agi_timing[i] < self.years:
-                multipliers[i, self.agi_timing[i] :] = multiplier
-        return multipliers
+        year_index = np.arange(self.years)
+        after_agi = year_index >= self.agi_timing[:, np.newaxis]
+        return np.where(after_agi, multiplier, 1.0)
 
     def get_wage_multipliers(self):
         """Get array of wage multipliers for each simulation and year."""

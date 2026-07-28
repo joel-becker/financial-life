@@ -4,6 +4,11 @@ import matplotlib.ticker as ticker
 
 import create_style_script as css
 
+# Match figures to the Streamlit theme (backgrounds, text, tick colors).
+# This styling was previously an import side effect of the deleted
+# utilities.py module; it belongs here, next to the plotting it styles.
+plt.rcParams.update(css.mplstyle)
+
 
 def plot_model_output(model_output, variables=None, alpha=0.03, mean_line_alpha=1, mean_line_width=2,
                       show_grid=True, grid_alpha=0.1, grid_style='dashed', plot_credibility_interval=True,
