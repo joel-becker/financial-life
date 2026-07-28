@@ -481,7 +481,7 @@ class PersonalFinanceModel:
 
         return np.clip(base_consumption, min_consumption, max_consumption)
 
-    def update_wealth(self, t, real_market_returns, is_retired, verbose=False):
+    def update_wealth(self, t, real_market_returns, is_retired):
         # Calculate total savings
         total_savings = self.savings[:, t]
 
@@ -528,36 +528,6 @@ class PersonalFinanceModel:
             self.market[:, t + 1] = self.market[:, t]
             self.retirement_account[:, t + 1] = self.retirement_account[:, t]
             self.financial_wealth[:, t + 1] = self.financial_wealth[:, t]
-
-        if verbose:
-            print(f"\nEntering update_wealth for t={t}")
-            print(
-                f"Initial state: cash={self.cash[0, t]}, market={self.market[0, t]}, retirement={self.retirement_account[0, t]}"
-            )
-            print(f"Total savings: {total_savings}")
-            print(
-                f"After retirement update: retirement={self.retirement_account[0, t]}"
-            )
-            print(f"Capital gains: {self.capital_gains[0, t]}")
-            print(f"After market update: market={self.market[0, t]}")
-            print(f"Cash savings: {cash_savings}")
-            print(f"Market savings: {market_savings}")
-            print(
-                f"After savings update: cash={self.cash[0, t]}, market={self.market[0, t]}"
-            )
-            print(
-                f"After adjustment: cash={self.cash[0, t]}, market={self.market[0, t]}"
-            )
-            print(
-                f"Final state: cash={self.cash[0, t]}, market={self.market[0, t]}, retirement={self.retirement_account[0, t]}, wealth={self.financial_wealth[0, t]}"
-            )
-            if t < self.years - 1:
-                print(
-                    f"Updating t+1: cash={self.cash[0, t + 1]}, market={self.market[0, t + 1]}, retirement={self.retirement_account[0, t + 1]}"
-                )
-                print(
-                    f"After update: cash={self.cash[0, t + 1]}, market={self.market[0, t + 1]}, retirement={self.retirement_account[0, t + 1]}, wealth={self.financial_wealth[0, t + 1]}"
-                )
 
     def calculate_retirement_contribution(self, t, total_real_income, current_age):
         contribution = np.minimum(
