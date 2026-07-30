@@ -61,3 +61,38 @@ def test_retirement_income_pays_no_payroll_tax():
         wage_income=np.array([0.0]),
     )
     assert model.tax_paid[0, 6] == pytest.approx(expected_tax[0])
+
+
+def test_years_until_retirement_clamped_to_zero():
+    # retirement age below current age must mean "already retired", not a
+    # negative array slice that floors phantom wages into most years
+    model = make_retiree_model(years_until_retirement=-10, min_income=15000)
+    np.random.seed(0)
+    model.simulate()
+    assert np.all(model.income == 0.0)
+    assert np.all(model.retirement_contributions == 0.0)
+
+
+def test_future_pension_counted_in_total_wealth_during_simulation():
+    # pension_income must be populated for ALL years before the simulation
+    # loop; previously calculate_total_wealth always saw zeros ahead of t
+    # and omitted the entire pension annuity from total_wealth
+    from tests.test_tax_flow import make_params
+    params = make_params(
+        m=1, years=40, years_until_retirement=30, years_until_death=40,
+        claim_age=67, current_age=30,
+    )
+    seen = []
+    model = PersonalFinanceModel(params)
+    original = model.calculate_future_pension
+
+    def probe(t, current_age):
+        value = original(t, current_age)
+        seen.append((t, float(value[0])))
+        return value
+
+    model.calculate_future_pension = probe
+    np.random.seed(1)
+    model.simulate()
+    early_calls = [v for t, v in seen if t == 0]
+    assert early_calls and early_calls[0] > 0

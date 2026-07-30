@@ -201,3 +201,16 @@ def test_additional_medicare_above_200k_wages():
     assert all_wages[0] - partial_wages[0] == pytest.approx(
         100000.0 * (0.0145 + 0.009), abs=0.01
     )
+
+
+# UK CGT band must stack gains on TAXABLE income (personal allowance does
+# not shelter gains)
+
+def test_uk_cgt_band_uses_taxable_income():
+    tax = TaxSystem("UK")
+    # income 0, gains 60000: taxable gains 57000; basic-rate band is 37700
+    # -> 37700*18% + 19300*24% = 11418.00 (HMRC treatment)
+    result = tax.calculate_tax(
+        np.array([0.0]), np.array([60000.0]), wage_income=np.array([0.0])
+    )
+    assert result[0] == pytest.approx(37700.0 * 0.18 + 19300.0 * 0.24, abs=0.01)

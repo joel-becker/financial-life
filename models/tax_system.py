@@ -52,6 +52,7 @@ class TaxSystem:
         self.capital_gains_higher_rate = 0.24
         self.uk_full_pension = 11973.0  # full new State Pension 2025/26
         self.uk_qualifying_years = 35.0
+        self.uk_state_pension_age = 66.0
 
     def _initialize_us_parameters(self):
         # Federal parameters, 2026 tax year (single filer)
@@ -182,8 +183,13 @@ class TaxSystem:
         
         ni_contributions = np.minimum(np.maximum(wage_income - self.ni_primary_threshold, 0.0), self.ni_upper_earnings_limit - self.ni_primary_threshold) * self.ni_basic_rate + np.maximum(wage_income - self.ni_upper_earnings_limit, 0.0) * self.ni_higher_rate
 
+        # Gains stack on TAXABLE income against the basic-rate band (the
+        # personal allowance does not shelter gains)
+        basic_band_remaining = np.maximum(
+            (self.basic_rate_threshold - self.personal_allowance) - taxable_income, 0.0
+        )
         taxable_capital_gains = np.maximum(capital_gains - self.capital_gains_allowance, 0.0)
-        capital_gains_tax = np.minimum(taxable_capital_gains, np.maximum(self.basic_rate_threshold - income, 0)) * self.capital_gains_basic_rate + np.maximum(taxable_capital_gains - np.maximum(self.basic_rate_threshold - income, 0), 0.0) * self.capital_gains_higher_rate
+        capital_gains_tax = np.minimum(taxable_capital_gains, basic_band_remaining) * self.capital_gains_basic_rate + np.maximum(taxable_capital_gains - basic_band_remaining, 0.0) * self.capital_gains_higher_rate
 
         return total_income_tax + ni_contributions + capital_gains_tax
 

@@ -23,18 +23,22 @@ def marginal_change_analysis(base_params, n_sims, risk_aversion):
     base_utility = calculate_utility(base_params, n_sims, risk_aversion)
     changes = []
 
-    # Define small changes for each parameter group
+    # Define small changes for each parameter group. Portfolio deltas
+    # tilt one asset up 0.1 and spread the offset over the others, for
+    # however many assets the (possibly custom) portfolio has.
+    n_assets = len(base_params['portfolio_weights'])
+    portfolio_deltas = [
+        [0.1 if j == i else (-0.1 / (n_assets - 1) if n_assets > 1 else 0.0)
+         for j in range(n_assets)]
+        for i in range(n_assets)
+    ]
     param_changes = {
         'consumption': [
             ('wealth_fraction_consumed_before_retirement', [-0.1, 0.1]),
             ('wealth_fraction_consumed_after_retirement', [-0.1, 0.1])
         ],
         'portfolio': [
-            ('portfolio_weights', [
-                [0.1, -0.05, -0.05],  # Increase stocks
-                [-0.05, 0.1, -0.05],  # Increase bonds
-                [-0.05, -0.05, 0.1]   # Increase real estate
-            ])
+            ('portfolio_weights', portfolio_deltas)
         ],
         'retirement': [
             ('years_until_retirement', [-2, 2]),

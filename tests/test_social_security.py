@@ -106,3 +106,38 @@ def test_benefits_monotone_in_claim_age():
     for income in (80000.0, 250000.0):
         benefits = [benefit_at_claim_age(a, income) for a in range(62, 71)]
         assert all(b2 >= b1 - 0.01 for b1, b2 in zip(benefits, benefits[1:])), benefits
+
+
+# UK State Pension claiming and accrual
+
+def make_uk_model(current_age, years_until_retirement, years=40):
+    params = make_params(
+        m=1, years=years, years_until_retirement=max(years_until_retirement, 0),
+        years_until_death=years, tax_region="UK",
+        claim_age=current_age + years_until_retirement, current_age=current_age,
+    )
+    return PersonalFinanceModel(params)
+
+
+def test_uk_pension_not_paid_before_state_pension_age():
+    # retiring at 45 must not start the State Pension until 66
+    model = make_uk_model(current_age=30, years_until_retirement=15)
+    assert model.calculate_uk_pension(20, np.array([50]))[0] == 0.0
+    assert model.calculate_uk_pension(36, np.array([66]))[0] > 0.0
+
+
+def test_uk_pension_accrues_from_working_years():
+    # retiring at 45 with an assumed working life from age 22 gives 23 of
+    # 35 qualifying years, not the full pension
+    model = make_uk_model(current_age=30, years_until_retirement=15)
+    benefit = model.calculate_uk_pension(36, np.array([66]))[0]
+    assert benefit == pytest.approx(23.0 / 35.0 * model.tax_system.uk_full_pension)
+
+
+def test_uk_pension_never_negative():
+    # already-retired user older than their nominal claim age previously
+    # produced a NEGATIVE pension
+    model = make_uk_model(current_age=70, years_until_retirement=-5, years=20)
+    benefit = model.calculate_uk_pension(0, np.array([70]))[0]
+    assert benefit >= 0.0
+    assert benefit == pytest.approx(model.tax_system.uk_full_pension)

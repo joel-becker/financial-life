@@ -367,7 +367,8 @@ with st.expander("Portfolio Construction"):
 
         # Correlations
         st.markdown("#### Asset Correlations")
-        correlation_cols = st.columns(num_assets * (num_assets - 1) // 2)
+        if num_assets > 1:
+            correlation_cols = st.columns(num_assets * (num_assets - 1) // 2)
         col_index = 0
         for i in range(num_assets):
             for j in range(i + 1, num_assets):
@@ -547,6 +548,11 @@ with st.expander("AGI Impact Parameters"):
     else:
         agi_params = None
 
+# Validate ages before building the simulation
+if age_at_death < current_age:
+    st.error("Expected age at death must be at least your current age.")
+    st.stop()
+
 # Construct the input parameters dictionary
 input_params = {
     "m": m,
@@ -617,7 +623,10 @@ model.simulate()
 results = model.get_results()
 
 # Display a plot
-st.pyplot(plot_model_output(results, variables_to_plot))
+if variables_to_plot:
+    st.pyplot(plot_model_output(results, variables_to_plot))
+else:
+    st.info("Select at least one variable to plot.")
 
 with st.expander("How do I read these plots?"):
     st.markdown(
