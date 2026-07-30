@@ -19,7 +19,9 @@ class PersonalFinanceModel:
         self.m = input_params["m"]
         self.years = input_params["years"]
         self.r = input_params["r"]
-        self.years_until_retirement = input_params["years_until_retirement"]
+        # A retirement age at or below the current age means already
+        # retired; negative values would silently corrupt array slices
+        self.years_until_retirement = max(input_params["years_until_retirement"], 0)
         self.years_until_death = input_params["years_until_death"]
         self.claim_age = input_params.get("claim_age", 67)
         self.current_age = input_params.get("current_age", 30)
@@ -169,6 +171,13 @@ class PersonalFinanceModel:
         self.income = self.income / cumulative_inflation
         self.apply_income_floor()
 
+        # Pension amounts depend only on the (already generated) income
+        # history and claim age, so the whole schedule is known up front.
+        # Filling it lazily inside the year loop meant calculate_total_wealth
+        # always saw zeros ahead of t and omitted the entire pension
+        # annuity from total_wealth (and from withdrawal proportions).
+        self.populate_pension_income()
+
         self.initialize_simulation()
 
         for t in range(self.years):
@@ -315,9 +324,13 @@ class PersonalFinanceModel:
             self.income[:, :working_years], self.min_income
         )
 
+    def populate_pension_income(self):
+        for t in range(self.years):
+            current_age = self.current_age + t
+            self.pension_income[:, t] = self.calculate_pension_income(t, current_age)
+
     def calculate_total_income(self, t, current_age):
         base_income = self.income[:, t]
-        self.pension_income[:, t] = self.calculate_pension_income(t, current_age)
 
         total_income = base_income + self.pension_income[:, t]
 
@@ -372,22 +385,28 @@ class PersonalFinanceModel:
             return np.zeros(self.m)
 
     def calculate_uk_pension(self, t, current_age):
+        # State Pension cannot be claimed before State Pension age, and
+        # qualifying years come from working years (career assumed to
+        # start at age 22), capped at the 35 needed for a full pension
+        claim_age = max(self.claim_age, self.tax_system.uk_state_pension_age)
+        retirement_age = self.current_age + self.years_until_retirement
+        qualifying_years = np.clip(
+            retirement_age - 22, 0, self.tax_system.uk_qualifying_years
+        )
         pension_amount = np.where(
-            current_age >= self.claim_age,
-            (
-                np.minimum(
-                    self.claim_age - self.current_age,
-                    self.tax_system.uk_qualifying_years,
-                )
-                / self.tax_system.uk_qualifying_years
-            )
+            current_age >= claim_age,
+            (qualifying_years / self.tax_system.uk_qualifying_years)
             * self.tax_system.uk_full_pension,
             0,
         )
         return pension_amount
 
     def calculate_us_social_security(self, t, current_age):
-        if np.all(current_age < self.claim_age):
+        # SSA pays no earlier than 62 and delayed credits stop at 70; the
+        # app ties claim age to retirement age, which can be far outside
+        # that range
+        claim_age = float(np.clip(self.claim_age, 62, 70))
+        if np.all(current_age < claim_age):
             return np.zeros(self.m)
 
         # Calculate AIME (Average Indexed Monthly Earnings): the top 35
@@ -413,28 +432,30 @@ class PersonalFinanceModel:
         # Adjust for claiming age: ~5/9% per month reduction for the first
         # 36 months before FRA, ~5/12% per month beyond that; ~2/3% per
         # month delayed-retirement credit after FRA
-        if self.claim_age < self.tax_system.fra:
-            months_early = (self.tax_system.fra - self.claim_age) * 12
+        if claim_age < self.tax_system.fra:
+            months_early = (self.tax_system.fra - claim_age) * 12
             age_adjustment = (
                 1
                 - 0.00555556 * np.minimum(36, months_early)
                 - 0.00416667 * np.maximum(0, months_early - 36)
             )
         else:
-            months_delayed = (self.claim_age - self.tax_system.fra) * 12
+            months_delayed = (claim_age - self.tax_system.fra) * 12
             age_adjustment = 1 + 0.00666667 * months_delayed
 
         pia *= age_adjustment
 
-        # Apply the maximum monthly benefit for the claiming age (falling
-        # back to the FRA cap for ages without a published maximum)
+        # Apply the maximum monthly benefit, interpolating between the
+        # published caps at 62/67/70 so the cap grows with claiming age
+        # (a flat FRA fallback made benefits non-monotone in claim age)
         benefit_caps = self.tax_system.ss_max_monthly_benefit
-        max_benefit = benefit_caps.get(int(self.claim_age), benefit_caps[67])
+        cap_ages = sorted(benefit_caps)
+        max_benefit = np.interp(claim_age, cap_ages, [benefit_caps[a] for a in cap_ages])
 
         pia = np.minimum(pia, max_benefit)
 
         # Return the annual benefit in real terms
-        return np.where(current_age >= self.claim_age, pia * 12, 0)
+        return np.where(current_age >= claim_age, pia * 12, 0)
 
     def calculate_consumption_amount(
         self, t, total_real_income, is_retired, years_left
@@ -549,8 +570,15 @@ class PersonalFinanceModel:
         # pre-tax retirement accounts are taxed as income. Donations are
         # NOT subtracted here — TaxSystem applies the deduction (with the
         # AGI cap) itself.
+        if self.tax_region == "UK":
+            # 25% of UK pension withdrawals are tax-free (UFPLS),
+            # matching the assumption estimate_retirement_account_tax
+            # already makes on the wealth side
+            taxable_withdrawals = 0.75 * real_withdrawals
+        else:
+            taxable_withdrawals = real_withdrawals
         real_taxable_income = (
-            total_real_income - real_contributions + real_withdrawals
+            total_real_income - real_contributions + taxable_withdrawals
         )
         # At most 85% of US Social Security benefits are taxable; the
         # provisional-income phase-in is not modeled, so this applies the

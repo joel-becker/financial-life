@@ -52,6 +52,7 @@ class TaxSystem:
         self.capital_gains_higher_rate = 0.24
         self.uk_full_pension = 11973.0  # full new State Pension 2025/26
         self.uk_qualifying_years = 35.0
+        self.uk_state_pension_age = 66.0
 
     def _initialize_us_parameters(self):
         # Federal parameters, 2026 tax year (single filer)
@@ -70,6 +71,12 @@ class TaxSystem:
         # Net capital losses offset at most this much ordinary income per
         # year; carryforwards are not modeled
         self.capital_loss_limit = 3000.0
+        # Net Investment Income Tax and Additional Medicare Tax (single
+        # filer; thresholds are statutory and NOT inflation-indexed)
+        self.niit_rate = 0.038
+        self.niit_threshold = 200000.0
+        self.additional_medicare_rate = 0.009
+        self.additional_medicare_threshold = 200000.0
         self.max_taxable_earnings = 184500.0
         self.bend_points = [1226.0, 7391.0]
         self.pia_factors = [0.9, 0.32, 0.15]
@@ -134,23 +141,37 @@ class TaxSystem:
             charitable_donations, np.maximum(agi, 0) * self.charitable_donation_limit
         )
 
-        # Ordinary income (after loss offset, donations, and the standard
-        # deduction) is taxed at federal ordinary brackets; capital gains
-        # are taxed at the LTCG brackets STACKED on top of ordinary income
-        # (gains fill brackets starting where ordinary income ends).
-        # States tax gains as ordinary income.
-        ordinary_base = np.maximum(income + loss_offset - deductible_donations, 0)
-        federal_taxable = np.maximum(ordinary_base - self.standard_deduction, 0)
+        # Filers take the LARGER of the standard deduction and itemized
+        # deductions (donations are the only itemized deduction modeled).
+        # Deduction not used up by ordinary income shelters capital gains,
+        # which are then taxed at LTCG brackets STACKED on top of ordinary
+        # taxable income. States tax gains as ordinary income.
+        federal_deduction = np.maximum(self.standard_deduction, deductible_donations)
+        ordinary_income = np.maximum(income + loss_offset, 0)
+        federal_taxable = np.maximum(ordinary_income - federal_deduction, 0)
+        unused_deduction = np.maximum(federal_deduction - ordinary_income, 0)
+        taxable_gains = np.maximum(positive_gains - unused_deduction, 0)
 
         federal_income_tax = self._calculate_bracketed_tax(federal_taxable, self.federal_brackets)
         capital_gains_tax = self._calculate_bracketed_tax(
-            federal_taxable + positive_gains, self.capital_gains_brackets
+            federal_taxable + taxable_gains, self.capital_gains_brackets
         ) - self._calculate_bracketed_tax(federal_taxable, self.capital_gains_brackets)
-        state_income_tax = self._calculate_state_tax(ordinary_base + positive_gains)
+        state_income_tax = self._calculate_state_tax(
+            ordinary_income + positive_gains, deductible_donations
+        )
         ss_tax = np.minimum(wage_income, self.ss_wage_base) * self.ss_rate
         medicare_tax = wage_income * self.medicare_rate
+        # NIIT: 3.8% on investment income above the MAGI threshold
+        niit = self.niit_rate * np.minimum(
+            positive_gains, np.maximum(agi - self.niit_threshold, 0)
+        )
+        # Additional Medicare: 0.9% on wages above the threshold
+        additional_medicare = self.additional_medicare_rate * np.maximum(
+            wage_income - self.additional_medicare_threshold, 0
+        )
 
-        return federal_income_tax + state_income_tax + ss_tax + medicare_tax + capital_gains_tax
+        return (federal_income_tax + state_income_tax + ss_tax + medicare_tax
+                + capital_gains_tax + niit + additional_medicare)
 
     def _calculate_uk_tax(self, income, capital_gains, wage_income):
         taxable_income = np.maximum(income - self.personal_allowance, 0.0)
@@ -162,16 +183,25 @@ class TaxSystem:
         
         ni_contributions = np.minimum(np.maximum(wage_income - self.ni_primary_threshold, 0.0), self.ni_upper_earnings_limit - self.ni_primary_threshold) * self.ni_basic_rate + np.maximum(wage_income - self.ni_upper_earnings_limit, 0.0) * self.ni_higher_rate
 
+        # Gains stack on TAXABLE income against the basic-rate band (the
+        # personal allowance does not shelter gains)
+        basic_band_remaining = np.maximum(
+            (self.basic_rate_threshold - self.personal_allowance) - taxable_income, 0.0
+        )
         taxable_capital_gains = np.maximum(capital_gains - self.capital_gains_allowance, 0.0)
-        capital_gains_tax = np.minimum(taxable_capital_gains, np.maximum(self.basic_rate_threshold - income, 0)) * self.capital_gains_basic_rate + np.maximum(taxable_capital_gains - np.maximum(self.basic_rate_threshold - income, 0), 0.0) * self.capital_gains_higher_rate
+        capital_gains_tax = np.minimum(taxable_capital_gains, basic_band_remaining) * self.capital_gains_basic_rate + np.maximum(taxable_capital_gains - basic_band_remaining, 0.0) * self.capital_gains_higher_rate
 
         return total_income_tax + ni_contributions + capital_gains_tax
 
-    def _calculate_state_tax(self, taxable_income):
+    def _calculate_state_tax(self, income_before_deductions, deductible_donations):
         if self.region == "California":
-            ca_taxable = np.maximum(taxable_income - self.ca_standard_deduction, 0)
+            # CA also allows the larger of its standard deduction and
+            # itemized donations
+            ca_deduction = np.maximum(self.ca_standard_deduction, deductible_donations)
+            ca_taxable = np.maximum(income_before_deductions - ca_deduction, 0)
             return self._calculate_bracketed_tax(ca_taxable, self.ca_brackets)
-        elif self.region == "Massachusetts":
+        taxable_income = np.maximum(income_before_deductions - deductible_donations, 0)
+        if self.region == "Massachusetts":
             return taxable_income * self.ma_rate
         elif self.region == "New York":
             return self._calculate_bracketed_tax(taxable_income, self.ny_brackets)

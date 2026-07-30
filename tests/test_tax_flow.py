@@ -148,3 +148,12 @@ def test_only_85_pct_of_social_security_is_taxable():
     model.calculate_after_tax_income(0, np.array([50000.0]))
     # taxable = 50000 - 0.15 * 20000
     assert model.real_taxable_income[0, 0] == pytest.approx(47000.0)
+
+
+def test_uk_withdrawals_75pct_taxable():
+    # 25% of UK pension withdrawals are tax-free (UFPLS); the wealth-side
+    # estimate already assumed this, but the actual tax path taxed 100%
+    model = PersonalFinanceModel(make_params(tax_region="UK"))
+    model.retirement_withdrawals[:, 0] = 40000.0
+    model.calculate_after_tax_income(0, np.array([11973.0]))
+    assert model.real_taxable_income[0, 0] == pytest.approx(11973.0 + 0.75 * 40000.0)
